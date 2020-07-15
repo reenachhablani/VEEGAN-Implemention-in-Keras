@@ -192,13 +192,10 @@ class GAN(keras.Model):
         random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
 
         latent_vect = E.predict(real_images)[0]
-        encImg = G.predict(latent_vect)
-        fakeImg = G.predict()
-
-
+  
         # Decode them to fake images
         generated_images = self.generator(random_latent_vectors)
-
+        encoded_images = self.generator(latent_vect)
         # Combine them with real images
         combined_images = tf.concat([generated_images, real_images], axis=0)
 
@@ -214,8 +211,13 @@ class GAN(keras.Model):
             predictions = self.discriminator(combined_images)
             d_loss = self.loss_fn(labels, predictions)
         grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
-        self.d_optimizer.apply_gradients(
+        self.optimizers.apply_gradients(
             zip(grads, self.discriminator.trainable_weights)
+            predictions_enc = self.discriminator(encoded_images)
+            d_loss_enc = self.loss_fn(tf.ones((batch_size, 1)), predictions_enc)
+        grads = tape.gradient(d_loss_enc, self.encoder.trainable_weights)
+        self.optimizers.apply_gradients(
+            zip(grads, self.encoder.trainable_weights)
         )
 
         # Sample random points in the latent space
@@ -230,7 +232,13 @@ class GAN(keras.Model):
             predictions = self.discriminator(self.generator(random_latent_vectors))
             g_loss = self.loss_fn(misleading_labels, predictions)
         grads = tape.gradient(g_loss, self.generator.trainable_weights)
-        self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+        self.optimizers.apply_gradients(zip(grads, self.generator.trainable_weights))
+        with tf.GradientTape() as tape:
+            predictions = self.VAE(real_images)
+            vae_loss = self.loss_fn(None, predictions)
+        grads = tape.gradient(vae_loss, self.VAE.trainable_weights)
+        self.optimizers.apply_gradients(zip(grads, self.VAE.trainable_weights))
+        
         return {
             "d_loss": d_loss,
             "d_loss_enc":  d_loss_enc, 
